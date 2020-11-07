@@ -115,34 +115,22 @@ class ResNet(nn.Module):
         self.avgpool = nn.AvgPool2d(7, stride=1)
         
         self.apply(_weights_init)
-    def generate_branch(self, block, in_planes, planes,strides, num_blocks, depth):
+        
+    def generate_branch(self, block, in_planes,strides, layers, branch, depth):
         branch_layers = []
-        set_branch = False
-        all_blocks = sum(num_blocks)
-        for i,num_block in enumerate(num_blocks):
-            if all_blocks - depth<num_block:
-                set_branch = True
-                branch_layers.append(self._make_layer(block,in_planes,planes[i],depth+num_block-all_blocks,stride=1))
-                in_planes = planes[i]*block.expansion
-            elif set_branch:
-                branch_layers.append(self._make_layer(block,in_planes,planes[i],num_block,stride=strides[i]))
-                in_planes = planes[i]*block.expansion
-            all_blocks -= num_block
-        return nn.Sequential(*branch_layers)
-    
-    def generate_share(self, block, in_planes,planes,strides, num_blocks, depth):
+        for i in range(depth,len(layers)):
+            layer = self._make_layer(block,in_planes,planes[i]//branch, strides[i])
+            in_planes = planes[i]
+            share_layers.append(layer)
+        return nn.Sequential(*share_layers)
+        
+    def generate_share(self, block, in_planes,planes,strides, layers, depth):
         share_layers = []
-        all_blocks = sum(num_blocks)
-        for i,num_block in enumerate(num_blocks):
-            if all_blocks - depth<num_block:
-                share_layers.append(self._make_layer(block,in_planes,planes[i],all_blocks-depth,stride=strides[i]))
-                break
-            else:
-                share_layers.append(self._make_layer(block,in_planes,planes[i],num_block,stride=strides[i]))
-            in_planes=planes[i]*block.expansion
-            all_blocks -= num_block
-
-        return nn.Sequential(*share_layers),planes[i]
+        for i in range(depth):
+            layer = self._make_layer(block,in_planes,planes[i],strides[i])
+            in_planes = planes[i]
+            share_layers.append(layer)
+        return nn.Sequential(*share_layers),in_planes
 
 
     def _make_layer(self, block, planes, blocks, stride=1):

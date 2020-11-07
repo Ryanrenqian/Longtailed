@@ -89,7 +89,7 @@ class BBN_ResNet_Cifar(nn.Module):
         set_branch = False
         all_blocks = sum(num_blocks)
         for i,num_block in enumerate(num_blocks):
-            if all_blocks - depth<num_block:
+            if all_blocks - depth<num_block and not set_branch:
                 set_branch = True
                 branch_layers.append(self._make_layer(block,in_planes,planes[i],depth+num_block-all_blocks,stride=1))
                 in_planes = planes[i]*block.expansion
@@ -135,7 +135,7 @@ class BBN_ResNet_Cifar(nn.Module):
         strides = [stride] + [1] * (num_blocks - 1)
         layers = []
         for stride in strides:
-#             print('block',in_planes, planes)
+#             print('block',in_planes, planes,stride)
             layers.append(block(in_planes, planes, stride))
             in_planes = planes * block.expansion
         return nn.Sequential(*layers)
@@ -183,7 +183,7 @@ def create_model(use_fc=False, pretrain=False, dropout=None, stage1_weights=Fals
     return resnet32
 
 if __name__ =='__main__':
-    model =create_model(depth=3,branch=1).cuda()
+    model =create_model(depth=8,branch=4).cuda()
     from torchsummary import summary
     summary(model.cuda(), (3, 32, 32))
 #     from tensorboardX import SummaryWriter
