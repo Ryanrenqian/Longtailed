@@ -104,6 +104,13 @@ class model ():
                         param.requires_grad = False
                 print('=====> Freezing: {} | False'.format(key))
             
+            if 'fix_flag' in val:
+                for param_name, param in self.networks[key].named_parameters():
+                    if val['fix_flag'] != param_name:
+                        param.requires_grad = False
+                    else:
+                        break
+                
             if 'fix_set' in val:
                 for fix_layer in val['fix_set']:
                     for param_name, param in self.networks[key].named_parameters():
@@ -211,8 +218,8 @@ class model ():
                 self.features = torch.from_numpy(new_feat).float().to(self.features.device)
 
         # update moving average
-        if phase == 'train':
-            self.embed_mean = self.mu * self.embed_mean + self.features.detach().mean(0).view(-1).cpu().numpy()
+        # if phase == 'train':
+        #     self.embed_mean = self.mu * self.embed_mean + self.features.detach().mean(0).view(-1).cpu().numpy()
 
         # If not just extracting features, calculate logits
         if not feature_ext:
@@ -633,6 +640,7 @@ class model ():
                     print('=======> Load classifier from checkpoint <=======')
                     #print('===================================================')
                     #continue
+            print(f'loading module:{model_state.keys()}')
             weights = model_state[key]
             weights = {k: weights[k] for k in weights if k in model.state_dict()}
             x = model.state_dict()
