@@ -15,12 +15,13 @@ def _weights_init(m):
 
 
 class SparseClassifier(nn.Module):
-    def __init__(self, num_classes=1000, feat_dim=2048,num_head=2, **args):
+    def __init__(self, num_classes=1000, feat_dim=2048,num_head=2, tau=1.0):
         super(SparseClassifier, self).__init__()
         self.num_head = num_head
         self.head_dim = feat_dim // num_head
         self.head_class = num_classes//num_head
         self.linears = nn.ModuleList([nn.Linear(self.head_dim, self.head_class, bias=False) for i in range(num_head)])
+        self.tau = tau
         for fc in self.linears:
             self.reset_parameters(fc.weight)
     
@@ -34,6 +35,7 @@ class SparseClassifier(nn.Module):
         for x,fc in zip(x_list,self.linears):
             output.append(fc(x))
         output = torch.cat(output, dim=1)
+        output *= self.tau
         return output,None
       
     def l2_norm(self, x):
