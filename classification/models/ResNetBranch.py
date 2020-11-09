@@ -101,7 +101,6 @@ class Bottleneck(nn.Module):
 class ResNet(nn.Module):
 
     def __init__(self, block, layers, strides=[1,2,2,2],branch=1,depth=0):
-        in_planes = 64
         planes=[64,128,256,512]
         super(ResNet, self).__init__()
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3,
@@ -109,8 +108,8 @@ class ResNet(nn.Module):
         self.bn1 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        
-        self.share_layers, in_planes = self.generate_share(block, in_planes,planes, strides, layers, depth)
+        in_planes = 64
+        self.share_layers, in_planes = self.generate_share(block, in_planes, planes, strides, layers, depth)
         self.branchs = nn.ModuleList([ self.generate_branch(block, in_planes, planes, strides, layers, branch, depth) for i in range(branch)])
         self.avgpool = nn.AvgPool2d(7, stride=1)
         
@@ -119,36 +118,33 @@ class ResNet(nn.Module):
     def generate_branch(self, block, in_planes, planes, strides, layers, branch, depth):
         branch_layers = []
         for i in range(depth,len(layers)):
-            layer = self._make_layer(block,in_planes,planes[i]//branch, strides[i])
-            in_planes = planes[i]
+            layer,in_planes = self._make_layer(block,in_planes,planes[i]//branch, strides[i])
             branch_layers.append(layer)
         return nn.Sequential(*branch_layers)
         
-    def generate_share(self, block, in_planes,planes,strides, layers, depth):
+    def generate_share(self, block, in_planes, planes,strides, layers, depth):
         share_layers = []
         for i in range(depth):
-            layer = self._make_layer(block,in_planes,planes[i],strides[i])
-            in_planes = planes[i]
+            layer,in_planes = self._make_layer(block,in_planes,planes[i],strides[i])
             share_layers.append(layer)
         return nn.Sequential(*share_layers),in_planes
 
 
-    def _make_layer(self, block, planes, blocks, stride=1):
+    def _make_layer(self, block, in_planes,planes, blocks, stride=1):
         downsample = None
-        if stride != 1 or self.inplanes != planes * block.expansion:
+        if stride != 1 or in_planes != planes * block.expansion:
             downsample = nn.Sequential(
-                nn.Conv2d(self.inplanes, planes * block.expansion,
+                nn.Conv2d(in_planes, planes * block.expansion,
                           kernel_size=1, stride=stride, bias=False),
                 nn.BatchNorm2d(planes * block.expansion),
             )
 
         layers = []
-        layers.append(block(self.inplanes, planes, stride, downsample))
-        self.inplanes = planes * block.expansion
+        layers.append(block(in_planes, planes, stride, downsample))
+        in_planes = planes * block.expansion
         for i in range(1, blocks):
-            layers.append(block(self.inplanes, planes))
-
-        return nn.Sequential(*layers)
+            layers.append(block(in_planes, planes))
+        return nn.Sequential(*layers),planes
 
     def forward(self, x, *args):
         x = self.conv1(x)
