@@ -9,7 +9,6 @@ LICENSE file in the root directory of this source tree.
 import math
 import torch.nn as nn
 import torch.nn.functional as F
-import torch
 # from utils import *
 
 def conv3x3(in_planes, out_planes, stride=1):
@@ -95,11 +94,11 @@ class Bottleneck(nn.Module):
 
 class ResNext(nn.Module):
 
-    def __init__(self, block, layers, branch=1, depth=4, planes=[64,128,256,512], strides=[1,2,2,2], groups=1, width_per_group=64, use_fc=False, dropout=None,use_glore=False, use_gem=False, last_relu=True):
+    def __init__(self, block, layers, groups=1, width_per_group=64, use_fc=False, dropout=None,
+                 use_glore=False, use_gem=False, last_relu=True):
 #         self.inplanes = 64
         super(ResNext, self).__init__()
-        self.branch = branch
-        self.depth = depth
+
         self.groups = groups
         self.base_width = width_per_group
 
@@ -107,36 +106,33 @@ class ResNext(nn.Module):
                                bias=False)
         self.bn1 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU(inplace=True)
+        inplanes = 64
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.share_layers,inplanes = self.generate_share(block, 64, planes, strides, layers, depth, is_last=False, last_relu=last_relu)
-        self.branch_layers = nn.ModuleList([ self.generate_branch(block, inplanes, planes, strides, layers, branch, depth, is_last=False, last_relu=True) for i in range(branch)])
-        
+        self.layer1,inplanes = self._make_layer(block,inplanes, 64, layers[0])
+        self.layer2,inplanes = self._make_layer(block,inplanes, 128, layers[1], stride=2)
+        self.layer3,inplanes = self._make_layer(block,inplanes, 256, layers[2], stride=2)
+        self.layer4,inplanes = self._make_layer(block,inplanes, 512, layers[3], stride=2, is_last=True, last_relu=last_relu)
         self.avgpool = nn.AvgPool2d(7, stride=1)
         
         self.use_fc = use_fc
         self.use_dropout = True if dropout else False
-    
-    def generate_branch(self, block, in_planes, planes,strides, layers, branch, depth, is_last=False, last_relu=True):
-        branch_layers = []
-        for i in range(depth,len(layers)):
-            if i != 3:
-                layer,in_planes = self._make_layer(block,in_planes, planes[i]//branch, layers[i], strides[i])
-            else:
-                layer,in_planes = self._make_layer(block,in_planes, planes[i]//branch, layers[i], strides[i], is_last=False, last_relu=True)
-            branch_layers.append(layer)
-        return nn.Sequential(*branch_layers)
-        
-    def generate_share(self, block, in_planes, planes, strides, layers, depth, is_last=False, last_relu=True):
-        share_layers = []
-        for i in range(depth):
-            if i != 3:
-                layer,in_planes = self._make_layer(block, in_planes, planes[i],layers[i], strides[i])
-            else:
-                layer,in_planes = self._make_layer(block, in_planes, planes[i],layers[i], strides[i], is_last=False, last_relu=True)
-            share_layers.append(layer)
-        return nn.ModuleList(share_layers),in_planes
-#         return nn.Sequential(*share_layers),in_planes
-        
+
+        if self.use_fc:
+            print('Using fc.')
+            self.fc_add = nn.Linear(512*block.expansion, 512)
+
+        if self.use_dropout:
+            print('Using dropout.')
+            self.dropout = nn.Dropout(p=dropout)
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+
 
     def _make_layer(self, block, inplanes, planes, blocks, stride=1, is_last=False, last_relu=True):
         downsample = None
@@ -163,18 +159,11 @@ class ResNext(nn.Module):
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
-        for layer in self.share_layers:
-            x = layer(x)
-#         x = self.share_layers(x)
-#         x_list = torch.split(x,self.branch,dim=1)
-        out = []
-        for branch in self.branch_layers:
-            out.append(branch(x))
-        x = torch.cat(out,dim=1)
-#         x = self.layer1(x)
-#         x = self.layer2(x)
-#         x = self.layer3(x)
-#         x = self.layer4(x)
+
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
 
         x = self.avgpool(x)
         
@@ -187,8 +176,8 @@ class ResNext(nn.Module):
             x = self.dropout(x)
 
         return x
-    
+
 if __name__ == '__main__':
-    model = ResNext(Bottleneck, layers=[3, 4, 6, 3],branch=2,depth=3, groups=32, width_per_group=4)
+    model = ResNext(Bottleneck, [3, 4, 6, 3], groups=32, width_per_group=4)
     from torchsummary import summary
-    summary(model.cuda(), (3, 224, 224))
+    summary(model.cuda(), (3, 256, 256))

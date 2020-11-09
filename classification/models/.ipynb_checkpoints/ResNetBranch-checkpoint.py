@@ -17,7 +17,7 @@ import math
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as init
-import torch
+
 
 def _weights_init(m):
     classname = m.__class__.__name__
@@ -100,7 +100,8 @@ class Bottleneck(nn.Module):
 
 class ResNet(nn.Module):
 
-    def __init__(self, block, layers, strides=[1,2,2,2], branch=1,depth=0):
+    def __init__(self, block, layers, strides=[1,2,2,2],branch=1,depth=0):
+        inplanes = 64
         planes=[64,128,256,512]
         super(ResNet, self).__init__()
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3,
@@ -108,9 +109,9 @@ class ResNet(nn.Module):
         self.bn1 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        in_planes = 64
-        self.share_layers, in_planes = self.generate_share(block, in_planes, planes, strides, layers, depth)
-        self.branchs = nn.ModuleList([ self.generate_branch(block, in_planes, planes, strides, layers, branch, depth) for i in range(branch)])
+        
+        self.share_layers, in_planes = self.generate_share(block, in_planes,planes, strides, num_blocks, depth)
+        self.branchs = nn.ModuleList([ self.generate_branch(block, in_planes, planes, strides, num_blocks, depth) for i in range(branch)])
         self.avgpool = nn.AvgPool2d(7, stride=1)
         
         self.apply(_weights_init)
@@ -118,46 +119,51 @@ class ResNet(nn.Module):
     def generate_branch(self, block, in_planes, planes, strides, layers, branch, depth):
         branch_layers = []
         for i in range(depth,len(layers)):
-            layer,in_planes = self._make_layer(block,in_planes,planes[i]//branch, layers[i], strides[i])
-            branch_layers.append(layer)
-        return nn.Sequential(*branch_layers)
+            layer = self._make_layer(block,in_planes,planes[i]//branch, strides[i])
+            in_planes = planes[i]
+            share_layers.append(layer)
+        return nn.Sequential(*share_layers)
         
-    def generate_share(self, block, in_planes, planes,strides, layers, depth):
+    def generate_share(self, block, in_planes,planes,strides, layers, depth):
         share_layers = []
         for i in range(depth):
-            print(in_planes,planes[i], layers[i],strides[i])
-            layer,in_planes = self._make_layer(block,in_planes,planes[i], layers[i],strides[i])
+            layer = self._make_layer(block,in_planes,planes[i],strides[i])
+            in_planes = planes[i]
             share_layers.append(layer)
-        return nn.ModuleList(share_layers),in_planes
+        return nn.Sequential(*share_layers),in_planes
 
 
-    def _make_layer(self, block, in_planes, planes, blocks, stride=1):
+    def _make_layer(self, block, planes, blocks, stride=1):
         downsample = None
-        if stride != 1 or in_planes != planes * block.expansion:
+        if stride != 1 or self.inplanes != planes * block.expansion:
             downsample = nn.Sequential(
-                nn.Conv2d(in_planes, planes * block.expansion,
+                nn.Conv2d(self.inplanes, planes * block.expansion,
                           kernel_size=1, stride=stride, bias=False),
                 nn.BatchNorm2d(planes * block.expansion),
             )
 
         layers = []
-        layers.append(block(in_planes, planes, stride, downsample))
-        in_planes = planes * block.expansion
+        layers.append(block(self.inplanes, planes, stride, downsample))
+        self.inplanes = planes * block.expansion
         for i in range(1, blocks):
-            layers.append(block(in_planes, planes))
-        return nn.Sequential(*layers),in_planes
+            layers.append(block(self.inplanes, planes))
+
+        return nn.Sequential(*layers)
 
     def forward(self, x, *args):
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
-        for i,layer in enumerate(self.share_layers):
-            x = layer(x)
+        
+        x = self.share_layers(x)
         if len(self.branchs)>0:
             x = torch.cat([branch(x) for branch in self.branchs], dim=1)
 
         x = self.avgpool(x)
         
         x = x.view(x.size(0), -1)
+        
+
+
         return x

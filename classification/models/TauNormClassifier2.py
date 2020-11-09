@@ -21,16 +21,24 @@ import math
 
 class DotProduct_Classifier(nn.Module):
     
-    def __init__(self, num_classes=1000, feat_dim=2048, *args):
+    def __init__(self, num_classes=1000, feat_dim=2048,num_head=2, **args):
         super(DotProduct_Classifier, self).__init__()
-        # print('<DotProductClassifier> contains bias: {}'.format(bias))
-        self.fc = nn.Linear(feat_dim, num_classes)
+        self.num_head = num_head
+        self.head_dim = feat_dim // num_head
+        self.head_class = num_classes//num_head
+        self.linears = nn.ModuleList([nn.Linear(self.head_dim, self.head_class, bias=False) for i in range(num_head)])
         self.scales = Parameter(torch.ones(num_classes))
-        for param_name, param in self.fc.named_parameters():
-            param.requires_grad = False
+        for fc in self.linears:
+            for param_name, param in fc.named_parameters():
+                param.requires_grad = False
         
-    def forward(self, x, *args):
-        x = self.fc(x)
+
+    def forward(self, x, label):
+        output = []
+        x_list = torch.split(x,self.head_dim,dim=1)
+        for x,fc in zip(x_list,self.linears):
+            output.append(fc(x))
+        x = torch.cat(output, dim=1)
         x *= self.scales
         return x, None
     

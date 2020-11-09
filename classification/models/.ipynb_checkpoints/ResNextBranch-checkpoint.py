@@ -108,15 +108,15 @@ class ResNext(nn.Module):
         self.bn1 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.share_layers,inplanes = self.generate_share(block, 64, planes, strides, layers, depth, is_last=False, last_relu=last_relu)
-        self.branch_layers = nn.ModuleList([ self.generate_branch(block, inplanes, planes, strides, layers, branch, depth, is_last=False, last_relu=True) for i in range(branch)])
+        self.share_layers,inplanes = self.generate_share(block, 64, planes, strides, layers, depth)
+        self.branch_layers = nn.ModuleList([ self.generate_branch(block, inplanes, planes, strides, layers, branch, depth) for i in range(branch)])
         
         self.avgpool = nn.AvgPool2d(7, stride=1)
         
         self.use_fc = use_fc
         self.use_dropout = True if dropout else False
     
-    def generate_branch(self, block, in_planes, planes,strides, layers, branch, depth, is_last=False, last_relu=True):
+    def generate_branch(self, block, in_planes, planes,strides, layers, branch, depth):
         branch_layers = []
         for i in range(depth,len(layers)):
             if i != 3:
@@ -163,7 +163,7 @@ class ResNext(nn.Module):
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
-        for layer in self.share_layers:
+        for i,layer in enumerate(self.share_layers):
             x = layer(x)
 #         x = self.share_layers(x)
 #         x_list = torch.split(x,self.branch,dim=1)
@@ -191,4 +191,4 @@ class ResNext(nn.Module):
 if __name__ == '__main__':
     model = ResNext(Bottleneck, layers=[3, 4, 6, 3],branch=2,depth=3, groups=32, width_per_group=4)
     from torchsummary import summary
-    summary(model.cuda(), (3, 224, 224))
+    summary(model.cuda(), (3, 256, 256))

@@ -77,41 +77,25 @@ class BBN_ResNet_Cifar(nn.Module):
         in_planes = planes[0]
         self.conv1 = nn.Conv2d(3, in_planes, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(in_planes)
-        self.share_layers, in_planes = self.generate_share(block, in_planes,planes, strides, num_blocks, depth)
-        self.branchs = nn.ModuleList([ self.generate_branch(block, in_planes,planes, strides, num_blocks, depth) for i in range(branch)])
-#         print(self.branchs[0])
+        self.share_layers, in_planes = self.generate_share(block, in_planes, planes, strides, num_blocks, depth)
+        self.branchs = nn.ModuleList([ self.generate_branch(block, in_planes, planes, strides, num_blocks, branch, depth) for i in range(branch)])
         self.apply(_weights_init)
 
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         
-    def generate_branch(self, block, in_planes, planes,strides, num_blocks, depth):
+    def generate_branch(self, block, in_planes, planes, strides, layers, branch, depth):
         branch_layers = []
-        set_branch = False
-        all_blocks = sum(num_blocks)
-        for i,num_block in enumerate(num_blocks):
-            if all_blocks - depth<num_block and not set_branch:
-                set_branch = True
-                branch_layers.append(self._make_layer(block,in_planes,planes[i],depth+num_block-all_blocks,stride=1))
-                in_planes = planes[i]*block.expansion
-            elif set_branch:
-                branch_layers.append(self._make_layer(block,in_planes,planes[i],num_block,stride=strides[i]))
-                in_planes = planes[i]*block.expansion
-            all_blocks -= num_block
+        for i in range(depth,len(layers)):
+            layer,in_planes = self._make_layer(block, in_planes, planes[i]//branch, layers[i], strides[i])
+            branch_layers.append(layer)
         return nn.Sequential(*branch_layers)
-    
-    def generate_share(self, block, in_planes,planes,strides, num_blocks, depth):
+        
+    def generate_share(self, block, in_planes, planes, strides, layers, depth, is_last=False, last_relu=True):
         share_layers = []
-        all_blocks = sum(num_blocks)
-        for i,num_block in enumerate(num_blocks):
-            if all_blocks - depth<num_block:
-                share_layers.append(self._make_layer(block,in_planes,planes[i],all_blocks-depth,stride=strides[i]))
-                break
-            else:
-                share_layers.append(self._make_layer(block,in_planes,planes[i],num_block,stride=strides[i]))
-            in_planes=planes[i]*block.expansion
-            all_blocks -= num_block
-
-        return nn.Sequential(*share_layers),planes[i]
+        for i in range(depth):
+            layer,in_planes = self._make_layer(block, in_planes, planes[i],layers[i], strides[i])
+            share_layers.append(layer)
+        return nn.ModuleList(share_layers),in_planes
 
 
     def load_model(self, pretrain):
@@ -138,11 +122,12 @@ class BBN_ResNet_Cifar(nn.Module):
 #             print('block',in_planes, planes,stride)
             layers.append(block(in_planes, planes, stride))
             in_planes = planes * block.expansion
-        return nn.Sequential(*layers)
+        return nn.Sequential(*layers),in_planes
 
     def forward(self, x, **kwargs):
         out = F.relu(self.bn1(self.conv1(x)))
-        out = self.share_layers(out)
+        for layer in self.share_layers:
+            out = layer(out)
 #         print(out.size())
         if len(self.branchs)>0:
 #             print(self.branchs[0](out))
@@ -183,7 +168,7 @@ def create_model(use_fc=False, pretrain=False, dropout=None, stage1_weights=Fals
     return resnet32
 
 if __name__ =='__main__':
-    model =create_model(depth=8,branch=4).cuda()
+    model =create_model(depth=2,branch=2).cuda()
     from torchsummary import summary
     summary(model.cuda(), (3, 32, 32))
 #     from tensorboardX import SummaryWriter

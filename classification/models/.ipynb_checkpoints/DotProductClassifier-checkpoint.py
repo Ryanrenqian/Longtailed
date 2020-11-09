@@ -12,31 +12,24 @@ Copyright (c) 2019, Zhongqi Miao
 All rights reserved.
 """
 
-import torch
+
 import torch.nn as nn
-from torch.nn.parameter import Parameter
 from utils import *
 from os import path
-import math
 
 class DotProduct_Classifier(nn.Module):
     
     def __init__(self, num_classes=1000, feat_dim=2048, *args):
         super(DotProduct_Classifier, self).__init__()
-        # print('<DotProductClassifier> contains bias: {}'.format(bias))
-        self.fc = nn.Linear(feat_dim, num_classes)
-        self.scales = Parameter(torch.ones(num_classes))
-        for param_name, param in self.fc.named_parameters():
-            param.requires_grad = False
+        self.fc = nn.Linear(feat_dim, num_classes, bias=False)
         
     def forward(self, x, *args):
         x = self.fc(x)
-        x *= self.scales
         return x, None
     
-def create_model(feat_dim, num_classes=1000, stage1_weights=False, dataset=None, log_dir=None, test=False, num_head=2):
-    print('Loading Tau Norm Classifier.')
-    clf = DotProduct_Classifier(num_classes, feat_dim,num_head)
+def create_model(feat_dim, num_classes=1000, stage1_weights=False, dataset=None, log_dir=None, test=False, *args):
+    print('Loading Dot Product Classifier.')
+    clf = DotProduct_Classifier(num_classes, feat_dim)
 
     if not test:
         if stage1_weights:
