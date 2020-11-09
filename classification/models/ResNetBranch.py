@@ -101,7 +101,7 @@ class Bottleneck(nn.Module):
 class ResNet(nn.Module):
 
     def __init__(self, block, layers, strides=[1,2,2,2],branch=1,depth=0):
-        inplanes = 64
+        in_planes = 64
         planes=[64,128,256,512]
         super(ResNet, self).__init__()
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3,
@@ -110,19 +110,19 @@ class ResNet(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         
-        self.share_layers, in_planes = self.generate_share(block, in_planes,planes, strides, num_blocks, depth)
-        self.branchs = nn.ModuleList([ self.generate_branch(block, in_planes,planes, strides, num_blocks, depth) for i in range(branch)])
+        self.share_layers, in_planes = self.generate_share(block, in_planes,planes, strides, layers, depth)
+        self.branchs = nn.ModuleList([ self.generate_branch(block, in_planes, planes, strides, layers, branch, depth) for i in range(branch)])
         self.avgpool = nn.AvgPool2d(7, stride=1)
         
         self.apply(_weights_init)
         
-    def generate_branch(self, block, in_planes,strides, layers, branch, depth):
+    def generate_branch(self, block, in_planes, planes, strides, layers, branch, depth):
         branch_layers = []
         for i in range(depth,len(layers)):
             layer = self._make_layer(block,in_planes,planes[i]//branch, strides[i])
             in_planes = planes[i]
-            share_layers.append(layer)
-        return nn.Sequential(*share_layers)
+            branch_layers.append(layer)
+        return nn.Sequential(*branch_layers)
         
     def generate_share(self, block, in_planes,planes,strides, layers, depth):
         share_layers = []

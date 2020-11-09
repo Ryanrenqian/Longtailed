@@ -41,10 +41,7 @@ class model ():
         # Setup logger
         self.logger = Logger(self.training_opt['log_dir'])
 
-        # init moving average
-        self.embed_mean = torch.zeros(int(self.training_opt['feature_dim'])).numpy()
-        self.mu = 0.9
-        
+       
         # Initialize model
         self.init_models()
 
@@ -106,8 +103,9 @@ class model ():
             
             if 'fix_flag' in val:
                 for param_name, param in self.networks[key].named_parameters():
-                    if val['fix_flag'] != param_name:
+                    if val['fix_flag'] not in param_name:
                         param.requires_grad = False
+                        print('=====> Freezing: {} | {}'.format(param_name, param.requires_grad))
                     else:
                         break
                 
@@ -217,14 +215,12 @@ class model ():
                 new_feat = self.pca.inverse_transform(pca_feat)
                 self.features = torch.from_numpy(new_feat).float().to(self.features.device)
 
-        # update moving average
-        # if phase == 'train':
-        #     self.embed_mean = self.mu * self.embed_mean + self.features.detach().mean(0).view(-1).cpu().numpy()
+
 
         # If not just extracting features, calculate logits
         if not feature_ext:
             # cont_eval = 'continue_eval' in self.training_opt and self.training_opt['continue_eval'] and phase != 'train'
-            self.logits, self.route_logits = self.networks['classifier'](self.features, labels, self.embed_mean)
+            self.logits, self.route_logits = self.networks['classifier'](self.features, labels)
 
     def batch_backward(self, print_grad=False):
         # Zero out optimizer gradients
@@ -310,10 +306,6 @@ class model ():
             print_write([self.training_opt['log_dir']], self.log_file)
             # print learning rate
             current_lr = self.show_current_lr()
-            current_lr = min(current_lr * 50, 1.0)
-            # scale the original mu according to the lr
-            if 'CIFAR' not in self.training_opt['dataset']:
-                self.mu = 1.0 - (1 - 0.9) * current_lr
 
             for step, (inputs, labels, indexes) in enumerate(self.data['train']):
                 # Break when step equal to epoch step
@@ -608,7 +600,7 @@ class model ():
                 model_dir = os.path.join(model_dir, 'final_model_checkpoint.pth')
             print('Loading model from %s' % (model_dir))
             checkpoint = torch.load(model_dir)          
-            model_state = checkpoint['state_dict_best']
+            model_state = checkpoint['state_dict']
         
         for key, model in self.networks.items():
             ##########################################
@@ -616,9 +608,9 @@ class model ():
             #     1. only tuning memory embedding
             #     2. retrain the entire classifier
             ##########################################
-            if 'embed' in checkpoint:
-                print('============> Load Moving Average <===========')
-                self.embed_mean = checkpoint['embed']
+            # if 'embed' in checkpoint:
+            #     print('============> Load Moving Average <===========')
+            #     self.embed_mean = checkpoint['embed']
             if not self.test_mode and 'Classifier' in self.config['networks'][key]['def_file']:
                 if 'tuning_memory' in self.config and self.config['tuning_memory']:
                     print('=============== WARNING! WARNING! ===============')
@@ -659,7 +651,7 @@ class model ():
         model_states = {
             'epoch': epoch,
             'state_dict': model_weights,
-            'embed': self.embed_mean,
+            # 'embed': self.embed_mean,
         }
 
         model_dir = os.path.join(self.training_opt['log_dir'], 
@@ -669,10 +661,10 @@ class model ():
     def save_model(self, epoch, best_epoch, best_model_weights, best_acc):
         
         model_states = {'epoch': epoch,
-                'best_epoch': best_epoch,
-                'state_dict_best': best_model_weights,
-                'best_acc': best_acc,
-                'embed': self.embed_mean,}
+                'epoch': best_epoch,
+                'state_dict': best_model_weights,
+                'acc': best_acc,
+                }
 
         model_dir = os.path.join(self.training_opt['log_dir'], 
                                  'final_model_checkpoint.pth')

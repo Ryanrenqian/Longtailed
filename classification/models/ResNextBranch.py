@@ -163,7 +163,7 @@ class ResNext(nn.Module):
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
-        for i,layer in enumerate(self.share_layers):
+        for layer in self.share_layers:
             x = layer(x)
 #         x = self.share_layers(x)
 #         x_list = torch.split(x,self.branch,dim=1)
